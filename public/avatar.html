@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Tutor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#07090D; --panel:#0E1218; --raise:#151A22; --line:#1F2631; --line-2:#161B23;
+  --ink:#EAEEF4; --ink-2:#93A0B2; --ink-3:#5A6576;
+  --hot:#FF5C4D; --warm:#F5A524; --cool:#2DD4A7;
+  --beam:#6B8BFF; --en:#5AC8FA; --l1:#F5A524;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 14.5px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+
+.top{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:center;gap:11px}
+.brand b{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.tr{display:flex;gap:12px;align-items:center;font:500 10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ink-3);display:inline-block;margin-right:6px}
+.dot.ok{background:var(--cool)}.dot.bad{background:var(--hot)}
+.tr a,.tr button{font:inherit;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);background:var(--raise);border:1px solid var(--line);border-radius:5px;padding:5px 9px;cursor:pointer;text-decoration:none}
+.tr a:hover,.tr button:hover{color:var(--ink);border-color:var(--ink-3)}
+
+.stage{position:relative;display:grid;grid-template-columns:252px 1fr 396px;height:calc(100vh - 53px);transition:grid-template-columns .22s cubic-bezier(.16,1,.3,1)}
+.stage.collapsed{grid-template-columns:0px 1fr 396px}
+/* Pinned to the sidebar's edge and travelling with it, so the control is always
+   exactly where the panel it hides currently ends. */
+.side-toggle{
+  position:absolute;top:50%;left:252px;z-index:20;
+  width:22px;height:52px;margin-top:-26px;transform:translateX(-11px);
+  display:grid;place-items:center;cursor:pointer;
+  background:var(--raise);border:1px solid var(--line);border-radius:7px;
+  color:var(--ink-3);transition:left .22s cubic-bezier(.16,1,.3,1),color .15s,border-color .15s;
+}
+.side-toggle:hover{color:var(--ink);border-color:var(--beam)}
+.side-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+.side-toggle svg{transition:transform .22s}
+.stage.collapsed .side-toggle{left:0;transform:translateX(4px)}
+.stage.collapsed .side-toggle svg{transform:rotate(180deg)}
+@media(max-width:1180px){.side-toggle{display:none}}
+.stage.collapsed .side{opacity:0;pointer-events:none}
+@media(max-width:1180px){.stage{grid-template-columns:0px 1fr 360px}.side{opacity:0;pointer-events:none}}
+
+/* ---------------- sidebar ---------------- */
+.side{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;overflow:hidden;transition:opacity .18s;padding-bottom:10px}
+.side-acts{padding:14px 12px 10px;display:flex;flex-direction:column;gap:7px}
+.side-btn{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:linear-gradient(140deg,var(--beam),#8E6BFF);border:none;border-radius:9px;padding:10px 12px;color:#fff;font:600 13px var(--sans);cursor:pointer}
+.side-btn span{font-size:14px;line-height:1}
+.side-btn.ghost{background:var(--raise);border:1px solid var(--line);color:var(--ink-2);font-weight:500}
+.side-btn.ghost:hover{color:var(--ink);border-color:var(--ink-3)}
+.side-btn:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+.side-lbl{font:500 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:14px 15px 9px}
+.convos{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:4px}
+.convo{position:relative;background:none;border:1px solid transparent;border-radius:8px;padding:9px 11px;cursor:pointer;text-align:left;width:100%}
+.convo:hover{background:var(--raise)}
+.convo.on{background:var(--raise);border-color:var(--line)}
+.convo b{display:block;font:500 13px var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.convo span{font:400 10.5px var(--mono);color:var(--ink-3)}
+.convo .del{position:absolute;right:6px;top:8px;background:none;border:none;color:var(--ink-3);cursor:pointer;font-size:14px;opacity:0;padding:2px 5px;border-radius:4px}
+.convo:hover .del{opacity:1}
+.convo .del:hover{color:var(--hot);background:rgba(255,92,77,.12)}
+
+/* ---------------- logo ---------------- */
+.brandlink{display:flex;align-items:center;gap:11px;text-decoration:none;color:inherit;border-radius:10px;padding:4px 8px 4px 4px}
+.brandlink:hover{background:var(--raise)}
+.brandlink:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+#logoImg{width:34px;height:34px;object-fit:contain;display:block}
+
+/* ---------------- avatar side ---------------- */
+.left{display:flex;flex-direction:column;padding:18px;gap:14px;min-width:0;min-height:0}
+.frame{
+  position:relative;flex:1;border-radius:16px;overflow:hidden;
+  border:1px solid var(--line);background:radial-gradient(120% 100% at 50% 0%,#16202F 0%,#0A0E14 70%);
+  display:grid;place-items:center;min-height:0;
+}
+.frame canvas{position:absolute;inset:0;width:100%;height:100%}
+.frame img,.frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center center}
+/* Both loops are mounted; only the active one is visible. Cross-fading opacity
+   keeps the cut seamless — a src swap would re-buffer mid-sentence. */
+.frame .av{opacity:0;transition:opacity .18s ease}
+.frame .av.on{opacity:1}
+.initial{position:relative;font:300 clamp(70px,13vw,150px)/1 var(--sans);color:#fff;opacity:.93;letter-spacing:-.04em;text-shadow:0 0 70px rgba(107,139,255,.5)}
+/* One action bar, centred under the presenter — the place a viewer already
+   looks for controls on a video call. */
+.actbar{
+  position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:4;
+  display:flex;gap:10px;padding:8px;border-radius:44px;
+  background:rgba(8,11,17,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);
+}
+.act{
+  width:44px;height:44px;flex:0 0 44px;border-radius:50%;border:1px solid transparent;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background:rgba(255,255,255,.07);color:var(--ink-2);transition:background .15s,color .15s,transform .15s;
+}
+.act:hover{background:rgba(255,255,255,.14);color:var(--ink);transform:translateY(-2px)}
+.act:focus-visible{outline:2px solid var(--beam);outline-offset:3px}
+.act.yt{color:#FF3D31}
+.act.yt:hover{color:#FF5647}
+.fsbtn{
+  position:absolute;top:14px;left:14px;z-index:3;width:36px;height:36px;border-radius:50%;
+  background:rgba(10,14,20,.55);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);
+  color:var(--ink-3);cursor:pointer;font-size:13px;
+}
+.fsbtn:hover{color:var(--ink)}
+.frame::after{content:"";position:absolute;inset:auto 0 0 0;height:140px;z-index:2;pointer-events:none;
+  background:linear-gradient(to top,rgba(5,7,12,.86),rgba(5,7,12,0))}
+.nameplate{position:absolute;left:16px;bottom:16px;z-index:3;display:flex;align-items:center;gap:11px;text-shadow:0 1px 12px rgba(0,0,0,.6)}
+.nameplate b{font-size:17px;font-weight:600}
+.nameplate span{font:500 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--hot);border:1px solid var(--hot);padding:4px 8px;border-radius:4px}
+.live{position:absolute;right:16px;bottom:16px;z-index:3;font:500 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.live.on{color:var(--cool)}
+
+  width:72px;height:72px;border-radius:50%;border:none;cursor:pointer;
+  background:linear-gradient(140deg,var(--beam),#9B6BFF);color:#fff;font-size:24px;
+  box-shadow:0 8px 30px rgba(107,139,255,.34);transition:transform .12s,box-shadow .2s;
+}
+
+.strip{display:flex;gap:11px;align-items:center;flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 14px}
+.strip k{font:500 9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin-right:3px}
+.seg{display:flex;flex:0 0 auto;background:var(--raise);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{background:none;border:none;color:var(--ink-3);padding:6px 12px;cursor:pointer;font:500 12.5px var(--sans)}
+.seg button.on{background:var(--beam);color:#fff}
+.strip .sp{flex:1}
+
+/* ---------------- rail ---------------- */
+.rail{border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel);min-height:0;overflow:hidden}
+.rhead{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.rhead b{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
+.rhead span{font:400 11px var(--mono);color:var(--ink-3)}
+.chat{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:11px;min-height:0}
+.bub{max-width:88%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.5}
+.bub.me{align-self:flex-end;background:linear-gradient(140deg,var(--beam),#8E6BFF);color:#fff;border-bottom-right-radius:4px}
+.bub.her{align-self:flex-start;background:var(--raise);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bub.sys{align-self:stretch;background:none;border:1px dashed var(--line);color:var(--ink-2);font-size:12.5px;text-align:center}
+.bub .who{font:500 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:5px}
+.sp-en{color:var(--en)}.sp-l1{color:var(--l1)}
+mark.ev{background:rgba(255,92,77,.16);box-shadow:0 -2px 0 var(--hot) inset;color:inherit;padding:2px 0}
+.bub.me mark.ev{background:rgba(255,255,255,.2);box-shadow:0 -2px 0 #fff inset}
+.bub.me .sp-en,.bub.me .sp-l1{color:#fff;opacity:.82}
+
+/* camera */
+.cam{position:relative;aspect-ratio:16/10;background:#05070A;border-bottom:1px solid var(--line);overflow:hidden;flex:0 0 auto}
+.cam video{width:100%;height:100%;object-fit:cover;display:none;transform:scaleX(-1)}
+.cam.live video{display:block}
+.cam-off{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-3);font:400 12.5px var(--mono);letter-spacing:.06em}
+.cam.live .cam-off{display:none}
+.cam-ctl{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;z-index:2}
+.cbtn{
+  position:relative;flex:0 0 36px;width:36px;height:36px;padding:0;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;box-sizing:border-box;
+  background:rgba(10,14,20,.66);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.13);
+  color:var(--ink-2);cursor:pointer;transition:background .15s,color .15s,border-color .15s;
+}
+.cbtn svg{display:block;flex:0 0 auto}
+.cbtn:hover{color:var(--ink)}
+/* Off is the default state, so it has to read as off at a glance, not merely
+   "not highlighted". A strike through the icon is the convention everywhere
+   else a camera or mic can be muted. */
+.cbtn::after{
+  content:"";position:absolute;left:50%;top:50%;width:24px;height:2px;border-radius:2px;
+  background:currentColor;transform:translate(-50%,-50%) rotate(-45deg);
+  box-shadow:0 -2px 0 rgba(10,14,20,.72);pointer-events:none;
+  opacity:1;transition:opacity .15s;
+}
+.cbtn.on::after{opacity:0}
+.cbtn.on{background:var(--beam);border-color:var(--beam);color:#fff}
+.cbtn.rec{background:var(--hot);border-color:var(--hot);color:#fff;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px rgba(255,92,77,.16)}}
+.cbtn:focus-visible{outline:2px solid var(--beam);outline-offset:3px}
+.mood[hidden]{display:none}
+.mood{position:absolute;right:12px;bottom:12px;z-index:2;display:flex;align-items:center;gap:8px;background:rgba(10,14,20,.72);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.11);border-radius:20px;padding:6px 13px 6px 10px;font:500 12px var(--sans);color:var(--ink)}
+.mood i{width:7px;height:7px;border-radius:50%;background:var(--ink-3);transition:background .25s}
+.mood span{transition:opacity .18s}
+.mood.happy i{background:var(--cool)}
+.mood.steady i{background:var(--beam)}
+.mood.confused i,.mood.nervous i{background:var(--warm)}
+.mood.frustrated i,.mood.sad i{background:var(--hot)}
+
+.empty{color:var(--ink-3);font-size:12.5px;text-align:center;padding:22px 10px;border:1px dashed var(--line);border-radius:8px}
+.composer{display:none;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+.composer.on{display:flex}
+.composer input{flex:1;background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--ink);font:400 14px var(--sans)}
+.composer input:focus{outline:none;border-color:var(--beam)}
+.composer input:disabled{opacity:.5;cursor:not-allowed}
+.composer button:disabled{opacity:.4;cursor:not-allowed}
+.composer button{background:var(--beam);border:none;border-radius:8px;padding:0 16px;color:#fff;font:600 13.5px var(--sans);cursor:pointer}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--line);border-top-color:var(--hot);border-radius:50%;animation:sp .7s linear infinite;margin-right:6px;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+/* ---------------- overlays ---------------- */
+.veil{position:fixed;inset:0;z-index:50;background:rgba(4,6,10,.82);backdrop-filter:blur(14px);display:none;place-items:center;padding:24px;overflow-y:auto}
+.veil.on{display:grid}
+.sheet{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px}
+.sheet.wide{max-width:820px}
+.sheet h2{margin:0 0 6px;font-size:22px;letter-spacing:-.02em}
+.sheet p.sub{margin:0 0 22px;color:var(--ink-2);font-size:14px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font:500 10px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.field input{background:var(--raise);border:1px solid var(--line);border-radius:9px;padding:12px 13px;color:var(--ink);font:400 15px var(--sans)}
+.field input:focus{outline:none;border-color:var(--beam)}
+.primary{width:100%;background:linear-gradient(140deg,var(--beam),#8E6BFF);border:none;border-radius:10px;padding:13px;color:#fff;font:600 15px var(--sans);cursor:pointer;margin-top:6px}
+.primary:hover{filter:brightness(1.07)}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.tabs{display:flex;gap:0;background:var(--raise);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:22px}
+.tabs button{flex:1;background:none;border:none;color:var(--ink-3);padding:10px;cursor:pointer;font:500 13.5px var(--sans)}
+.tabs button.on{background:var(--beam);color:#fff}
+.err{color:var(--hot);font-size:13px;min-height:19px;margin-top:8px}
+.sel{background:var(--raise);border:1px solid var(--line);border-radius:9px;padding:12px 13px;color:var(--ink);font:400 14.5px var(--sans)}
+.sel:focus{outline:none;border-color:var(--beam)}
+.linky{background:none;border:none;color:var(--beam);cursor:pointer;font:400 12.5px var(--sans);text-decoration:underline;padding:0}
+
+/* avatar carousel */
+.carousel{display:flex;align-items:center;gap:10px;margin:4px 0 16px}
+.viewport{flex:1;overflow:hidden;border-radius:16px;min-width:0}
+.track{width:100%}
+.slide{width:100%;padding:30px 26px;text-align:center;background:var(--raise);border:1px solid var(--line);border-radius:16px}
+.slide.in-right{animation:inRight .36s cubic-bezier(.16,1,.3,1)}
+.slide.in-left{animation:inLeft .36s cubic-bezier(.16,1,.3,1)}
+@keyframes inRight{from{opacity:0;transform:translateX(46px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes inLeft{from{opacity:0;transform:translateX(-46px) scale(.96)}to{opacity:1;transform:none}}
+.slide .ph{width:130px;height:130px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;font:300 52px/1 var(--sans);color:#fff;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.45)}
+.slide .ph img{width:100%;height:100%;object-fit:cover}
+.slide h3{margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em}
+.slide .st{font:500 10px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--beam);margin-top:9px}
+.slide .role{font:400 12px var(--sans);color:var(--ink-3);margin-top:6px}
+.slide .bl{margin:14px auto 0;max-width:42ch;font-size:14.5px;color:var(--ink-2);line-height:1.55;min-height:44px}
+.slide.maker .ph{background:var(--panel);border:1px dashed var(--line);font-size:42px;color:var(--beam);box-shadow:none}
+.arrow{width:46px;height:46px;flex:0 0 46px;border-radius:50%;background:var(--raise);border:1px solid var(--line);color:var(--ink-2);font-size:26px;line-height:1;cursor:pointer;transition:transform .14s,border-color .14s}
+.arrow:hover{color:var(--ink);border-color:var(--beam);transform:scale(1.07)}
+.arrow:active{transform:scale(.95)}
+.arrow:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+.dots{display:flex;justify-content:center;gap:6px;margin-bottom:20px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--line);transition:background .25s,width .25s}
+.dots i.on{background:var(--beam);width:20px;border-radius:3px}
+
+/* avatar picker */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:13px;margin-bottom:20px}
+.pick{background:var(--raise);border:1px solid var(--line);border-radius:13px;padding:14px 12px;cursor:pointer;text-align:center;transition:border-color .15s,transform .12s}
+.pick:hover{transform:translateY(-2px);border-color:var(--ink-3)}
+.pick.on{border-color:var(--beam);box-shadow:0 0 0 2px rgba(107,139,255,.26)}
+.pick .ph{width:76px;height:76px;border-radius:50%;margin:0 auto 10px;display:grid;place-items:center;font:300 30px/1 var(--sans);color:#fff;overflow:hidden;position:relative}
+.pick .ph img{width:100%;height:100%;object-fit:cover}
+.pick b{display:block;font-size:14.5px;font-weight:600}
+.pick .st{font:500 9px/1.3 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-top:4px}
+.pick .bl{font-size:11.5px;color:var(--ink-2);margin-top:7px;line-height:1.4}
+.who-chip{display:flex;align-items:center;gap:9px;font:500 12px var(--sans);color:var(--ink-2)}
+.who-chip button{background:none;border:none;color:var(--ink-3);font:400 11px var(--sans);cursor:pointer;text-decoration:underline;padding:0}
+.who-chip button:hover{color:var(--ink)}
+.who-chip .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;overflow:hidden}
+.who-chip .av img{width:100%;height:100%;object-fit:cover}
+
+/* ---------------- video search ---------------- */
+.yt-sheet{max-width:880px;padding:0;overflow:hidden}
+.yt-head{
+  padding:26px 30px 22px;border-bottom:1px solid var(--line);
+  background:radial-gradient(120% 150% at 8% 0%, rgba(255,61,49,.16) 0%, rgba(255,61,49,0) 62%),
+             linear-gradient(160deg, rgba(255,61,49,.08), rgba(255,61,49,.01));
+}
+.yt-head .row{display:flex;align-items:center;gap:14px}
+.yt-ico{
+  width:46px;height:46px;flex:0 0 46px;border-radius:13px;display:grid;place-items:center;
+  background:rgba(255,61,49,.16);border:1px solid rgba(255,61,49,.34);color:#FF3D31;
+}
+.yt-head h2{margin:0;font-size:21px;letter-spacing:-.022em}
+.yt-head p{margin:3px 0 0;font-size:13.5px;color:var(--ink-2);font-weight:300}
+.ytform{display:flex;gap:10px;margin-top:18px}
+.ytform input{
+  flex:1;background:rgba(6,9,14,.6);border:1px solid var(--line);border-radius:11px;
+  padding:13px 15px;color:var(--ink);font:400 14.5px var(--sans);
+}
+.ytform input::placeholder{color:var(--ink-3)}
+.ytform input:focus{outline:none;border-color:var(--beam);background:rgba(6,9,14,.85)}
+.ytform button{
+  background:linear-gradient(140deg,var(--beam),#8E6BFF);border:none;border-radius:11px;
+  padding:0 26px;color:#fff;font:600 14px var(--sans);cursor:pointer;
+}
+.ytform button:hover{filter:brightness(1.08)}
+.ytresults{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:16px;
+  padding:22px 30px 28px;max-height:56vh;overflow-y:auto;
+}
+.vid{
+  background:var(--raise);border:1px solid var(--line);border-radius:13px;overflow:hidden;
+  cursor:pointer;text-align:left;padding:0;font-family:var(--sans);
+  transition:border-color .16s,transform .16s,box-shadow .16s;
+}
+.vid:hover{border-color:var(--beam);transform:translateY(-3px);box-shadow:0 16px 38px rgba(0,0,0,.5)}
+.vid:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+.vid .th{position:relative;aspect-ratio:16/9;background:#000;display:block}
+.vid .th img{width:100%;height:100%;object-fit:cover;display:block}
+.vid .len{
+  position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.85);color:#fff;
+  font:500 10.5px/1 var(--mono);padding:3px 6px;border-radius:4px;
+}
+.vid .meta{padding:11px 13px 14px}
+.vid b{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  font-size:13px;font-weight:600;line-height:1.38;color:var(--ink);
+}
+.vid span{display:block;font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.ytempty{
+  grid-column:1/-1;text-align:center;color:var(--ink-3);font-size:13.5px;
+  padding:34px 12px;border:1px dashed var(--line);border-radius:12px;
+}
+
+/* the player docks over the teacher so the tutor never leaves the screen */
+.player{position:absolute;inset:0;z-index:6;background:#000;display:none}
+.player.on{display:block}
+.player iframe{width:100%;height:100%;border:0;display:block}
+.player.mini{
+  inset:auto 14px 82px auto;width:286px;height:161px;border-radius:13px;overflow:hidden;
+  box-shadow:0 20px 54px rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.16);
+}
+.pbar{position:absolute;top:10px;right:10px;z-index:7;display:flex;gap:7px}
+.pbar button{
+  width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:rgba(8,11,17,.82);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.16);
+  color:var(--ink-2);cursor:pointer;font-size:13px;line-height:1;
+}
+.pbar button:hover{color:var(--ink);border-color:var(--beam)}
+
+/* ---------------- sheet chrome ---------------- */
+.veil .close{
+  position:absolute;top:16px;right:16px;z-index:5;
+  width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:rgba(255,255,255,.06);border:1px solid var(--line);
+  color:var(--ink-3);font:400 17px/1 var(--sans);cursor:pointer;
+}
+.veil .close:hover{color:var(--ink);background:rgba(255,255,255,.12)}
+.veil .close:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+
+/* ---------------- action sheets ---------------- */
+.sheet.act-sheet{padding:0;overflow:hidden;max-width:480px}
+.as-head{
+  padding:30px 32px 26px;border-bottom:1px solid var(--line);text-align:center;
+  background:radial-gradient(120% 160% at 50% 0%, var(--tintA, rgba(107,139,255,.2)) 0%, rgba(0,0,0,0) 65%);
+}
+.as-ico{
+  width:58px;height:58px;margin:0 auto 18px;border-radius:17px;display:grid;place-items:center;
+  background:var(--tintB, rgba(107,139,255,.16));border:1px solid var(--tintC, rgba(107,139,255,.32));
+  color:var(--tintD, var(--beam));
+}
+.as-head h2{margin:0 0 7px;font-size:23px;letter-spacing:-.024em}
+.as-head p{margin:0 auto;max-width:34ch;font-size:13.5px;line-height:1.5;color:var(--ink-2);font-weight:300}
+.as-body{padding:24px 32px 28px}
+
+/* the centre action: a dropzone, a call button, a start card */
+.as-zone{
+  display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:15px;padding:28px 20px;cursor:pointer;
+  background:rgba(255,255,255,.02);transition:border-color .18s,background .18s,transform .18s;
+}
+.as-zone:hover,.as-zone.drag{border-color:var(--beam);background:rgba(107,139,255,.07);transform:translateY(-2px)}
+.as-zone svg{color:var(--beam)}
+.as-zone b{font-size:14.5px;font-weight:600}
+.as-zone span{font-size:12.5px;color:var(--ink-3)}
+.as-zone input{display:none}
+
+.as-cta{
+  width:100%;border:none;border-radius:13px;padding:15px;cursor:pointer;
+  font:700 15.5px var(--sans);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;
+  background:linear-gradient(140deg,var(--beam),#8E6BFF);box-shadow:0 12px 34px rgba(107,139,255,.3);
+  transition:transform .15s,box-shadow .2s;
+}
+.as-cta:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(107,139,255,.42)}
+.as-cta.green{background:linear-gradient(140deg,#2DD4A7,#1E9E8A);box-shadow:0 12px 34px rgba(45,212,167,.28)}
+.as-cta.green:hover{box-shadow:0 18px 44px rgba(45,212,167,.4)}
+  border:2px solid rgba(255,255,255,.16);box-shadow:0 12px 32px rgba(0,0,0,.5)}
+
+.as-list{margin:20px 0 0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:13px}
+.as-list li{list-style:none;counter-increment:s;padding-left:36px;position:relative;font-size:13px;color:var(--ink-2);line-height:1.5}
+.as-list li::before{
+  content:counter(s);position:absolute;left:0;top:-1px;width:24px;height:24px;border-radius:8px;
+  display:grid;place-items:center;background:var(--raise);border:1px solid var(--line);
+  font:600 11px var(--mono);color:var(--beam);
+}
+  margin-top:20px;display:flex;align-items:center;justify-content:center;gap:8px;
+  font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--warm);
+  background:rgba(245,165,36,.08);border:1px solid rgba(245,165,36,.26);border-radius:10px;padding:11px;
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">
+    <a class="brandlink" href="/" title="Home">
+      <img src="logo.png" alt="" id="logoImg">
+      <b>AI&nbsp;Tutor</b>
+    </a>
+  </div>
+  <div class="tr">
+    <span class="who-chip" id="whoChip" hidden><span class="av" id="whoAv"></span><b id="whoName"></b><button id="logout" title="Log out">log out</button></span>
+  </div>
+</div>
+
+<div class="stage" id="stage">
+  <aside class="side" id="side">
+    <div class="side-acts">
+      <button class="side-btn" id="newChat"><span>＋</span> New conversation</button>
+      <button class="side-btn ghost" id="changeAvatar"><span>◑</span> Change avatar model</button>
+      <button class="side-btn ghost" id="makePersona"><span>✦</span> Create your own persona</button>
+    </div>
+    <div class="side-lbl">Past conversations</div>
+    <div class="convos" id="convos"></div>
+  </aside>
+
+  <button class="side-toggle" id="sideToggle" aria-label="Hide conversations" title="Hide conversations">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+
+  <div class="left">
+    <div class="frame" id="frame">
+      <canvas id="presence"></canvas>
+      <div class="initial" id="initial">K</div>
+      <div class="actbar">
+        <button class="act" data-act="call" title="Call">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.4 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>
+        </button>
+        <button class="act" data-act="upload" title="Upload notes">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        </button>
+        <button class="act" data-act="test" title="Take a test">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 7-7"/><path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+        </button>
+        <button class="act yt" data-act="youtube" title="Learn from a video">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.3 5 12 5 12 5s-6.3 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.7 19 12 19 12 19s6.3 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8z"/><path d="M10 15l5-3-5-3z" fill="#0B0D11"/></svg>
+        </button>
+      </div>
+      <button class="fsbtn" id="fs" title="Fullscreen">⛶</button>
+      <div class="player" id="player">
+        <div class="pbar">
+          <button id="pMini" title="Shrink and keep asking">⤡</button>
+          <button id="pClose" title="Close video">×</button>
+        </div>
+        <iframe id="pFrame" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      </div>
+      <div class="nameplate"><b id="pName">Kavya</b><span id="pRole">Socratic</span></div>
+      <div class="live" id="liveTag">idle</div>
+    </div>
+
+    <div class="strip">
+      <k>language</k>
+      <div class="seg" id="langSeg">
+        <button data-l="hinglish" class="on">Hinglish</button>
+        <button data-l="hindi">हिन्दी</button>
+        <button data-l="english">English</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="cam">
+      <video id="cam" autoplay playsinline muted></video>
+      <div class="cam-off" id="camOff">Camera is off</div>
+      <div class="mood" id="mood" hidden><i></i><span></span></div>
+      <div class="cam-ctl">
+        <button id="camBtn" class="cbtn" title="Camera">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        </button>
+        <button id="micBtn" class="cbtn" title="Microphone">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="rhead"><b id="probTitle">No conversation yet</b><span id="turns">0 turns</span></div>
+    <div class="chat" id="chat"></div>
+    <div class="composer on" id="composer">
+      <input id="say" placeholder="Ask anything, or explain your thinking…" autocomplete="off">
+      <button id="send">Send</button>
+    </div>
+  </div>
+</div>
+
+<div class="veil" id="authVeil">
+  <div class="sheet">
+    <h2>AI Tutor</h2>
+    <p class="sub">Your learner model is saved against your name, so the tutor picks up where you left off.</p>
+    <div class="tabs" id="authTabs">
+      <button data-m="login" class="on">Log in</button>
+      <button data-m="register">Register</button>
+    </div>
+    <form id="authForm" autocomplete="off">
+      <div class="field"><label for="u">Username</label><input id="u" required autocomplete="username"></div>
+      <div class="field"><label for="p">Password</label><input id="p" type="password" required autocomplete="current-password"></div>
+      <button class="primary" id="authGo" type="submit">Log in</button>
+      <div class="err" id="authErr"></div>
+    </form>
+  </div>
+</div>
+
+<div class="veil" id="pickVeil">
+  <div class="sheet wide">
+    <h2>Choose your teacher</h2>
+    <p class="sub">Each one teaches by a different method. Your pick stays with you — the tutor only swaps faces when your misconception needs a method this teacher does not use.</p>
+
+    <div class="carousel">
+      <button class="arrow" id="carPrev" aria-label="Previous teacher">‹</button>
+      <div class="viewport"><div class="track" id="track"></div></div>
+      <button class="arrow" id="carNext" aria-label="Next teacher">›</button>
+    </div>
+
+    <div class="dots" id="dots"></div>
+    <button class="primary" id="pickGo">Start learning</button>
+  </div>
+</div>
+
+<div class="veil" id="ytVeil">
+  <div class="sheet yt-sheet" style="position:relative">
+    <button class="close" id="ytClose" aria-label="Close">×</button>
+    <div class="yt-head">
+      <div class="row">
+        <div class="yt-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.3 5 12 5 12 5s-6.3 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.7 19 12 19 12 19s6.3 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8z"/><path d="M10 15l5-3-5-3z" fill="#0B0D11"/></svg></div>
+        <div>
+          <h2>Learn from a video</h2>
+          <p>Find a lecture, play it here, and keep asking your teacher while it runs.</p>
+        </div>
+      </div>
+      <form class="ytform" id="ytForm" autocomplete="off">
+        <input id="ytQ" placeholder="photosynthesis class 10 hindi">
+        <button type="submit">Search</button>
+      </form>
+    </div>
+    <div class="ytresults" id="ytResults"></div>
+  </div>
+</div>
+
+<div class="veil" id="soonVeil">
+  <div class="sheet act-sheet" id="soonSheet" style="position:relative">
+    <button class="close" id="soonClose" aria-label="Close">&times;</button>
+    <div class="as-head" id="soonHead">
+      <div class="as-ico" id="soonIco"></div>
+      <h2 id="soonTitle"></h2>
+      <p id="soonSub"></p>
+    </div>
+    <div class="as-body">
+      <div id="soonAction"></div>
+      <ul class="as-list" id="soonList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="veil" id="nameVeil">
+  <div class="sheet" style="position:relative">
+    <h2>New conversation</h2>
+    <p class="sub">Name it so you can find it later, and say what you want to work on.</p>
+    <form id="nameForm" autocomplete="off">
+      <div class="field"><label for="cName">Name</label><input id="cName" required placeholder="Photosynthesis — Tuesday"></div>
+      <div class="field"><label for="cProb">What do you want help with? <span style="text-transform:none;letter-spacing:0">(optional)</span></label><input id="cProb" placeholder="A topic, or a specific question"></div>
+      <button class="primary" type="submit">Start</button>
+      <button type="button" class="linky" id="nameCancel" style="margin-top:12px">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<div class="veil" id="makeVeil">
+  <div class="sheet" style="position:relative">
+    <h2>Create your own teacher</h2>
+    <p class="sub">Describe a teacher you actually learned from. The method you pick is what the tutor will use — the voice is yours.</p>
+    <form id="makeForm" autocomplete="off">
+      <div class="field"><label for="mName">Name</label><input id="mName" required placeholder="Meera Ma'am"></div>
+      <div class="field"><label for="mStrat">Teaching method</label><select id="mStrat" class="sel"></select></div>
+      <div class="field"><label for="mGender">Voice type</label>
+        <select id="mGender" class="sel"><option value="f">Female</option><option value="m">Male</option></select>
+      </div>
+      <div class="field"><label for="mVoice">Voice</label><select id="mVoice" class="sel"></select></div>
+      <div class="field"><label for="mBlurb">How they teach <span style="text-transform:none;letter-spacing:0">(optional)</span></label><input id="mBlurb" placeholder="Always made us draw it first"></div>
+      <button class="primary" type="submit">Create teacher</button>
+      <div class="err" id="makeErr"></div>
+      <button type="button" class="linky" id="makeCancel" style="margin-top:12px">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<script src="vendor/face-api.js"></script>
+<script src="avatar.js"></script>
+</body>
+</html>

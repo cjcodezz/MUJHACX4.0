@@ -1,0 +1,21 @@
+{
+  "name": "ai-tutor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "release": "node make-release.mjs"
+  },
+  "dependencies": {
+    "@vladmandic/face-api": "^1.7.15",
+    "dotenv": "^17.0.0",
+    "express": "^5.1.0",
+    "zod": "^4.6.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "A tutor that changes its teaching method, not its volume."
+}
